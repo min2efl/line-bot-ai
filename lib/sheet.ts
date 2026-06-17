@@ -47,7 +47,7 @@ export function clearCache() {
   cache = null;
 }
 
-async function fetchCsv(): Promise<string> {
+export async function fetchCsv(): Promise<string> {
   const url = process.env.SHEET_CSV_URL;
   if (!url) throw new Error("SHEET_CSV_URL is not configured");
 
