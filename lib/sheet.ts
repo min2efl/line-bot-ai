@@ -43,6 +43,10 @@ function parseCsv(csv: string): FAQ[] {
   return faqs;
 }
 
+export function clearCache() {
+  cache = null;
+}
+
 export async function getFaq(): Promise<string> {
   const now = Date.now();
 
