@@ -47,6 +47,22 @@ export function clearCache() {
   cache = null;
 }
 
+async function fetchCsv(): Promise<string> {
+  const url = process.env.SHEET_CSV_URL;
+  if (!url) throw new Error("SHEET_CSV_URL is not configured");
+
+  // append timestamp to bypass Google Sheets CDN cache
+  const bustUrl = url.includes("?") ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
+  const res = await fetch(bustUrl, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Sheet fetch failed: ${res.status} ${res.statusText}`);
+  return res.text();
+}
+
+export async function getFaqRows(): Promise<FAQ[]> {
+  const csv = await fetchCsv();
+  return parseCsv(csv);
+}
+
 export async function getFaq(): Promise<string> {
   const now = Date.now();
 
@@ -54,16 +70,7 @@ export async function getFaq(): Promise<string> {
     return cache.data;
   }
 
-  const url = process.env.SHEET_CSV_URL;
-  if (!url) throw new Error("SHEET_CSV_URL is not configured");
-
-  // append timestamp to bypass Google Sheets CDN cache
-  const bustUrl = `${url}&t=${Date.now()}`;
-  const res = await fetch(bustUrl, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Sheet fetch failed: ${res.status} ${res.statusText}`);
-
-  const csv = await res.text();
-  const faqs = parseCsv(csv);
+  const faqs = await getFaqRows();
 
   const faqString = faqs
     .map((f) => `Q: ${f.question}\nA: ${f.answer}`)

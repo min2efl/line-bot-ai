@@ -1,21 +1,22 @@
 import { NextResponse } from "next/server";
-import { getFaq, clearCache } from "@/lib/sheet";
+import { getFaqRows, clearCache } from "@/lib/sheet";
 
-// GET /api/faq-debug        — แสดง FAQ ที่บอทใช้อยู่
-// GET /api/faq-debug?refresh — force-fetch ใหม่จาก Sheet ทันที
+// GET /api/faq-debug          — แสดง FAQ ทุก row ที่บอทใช้อยู่
+// GET /api/faq-debug?refresh  — force-fetch ใหม่จาก Sheet ทันที
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const forceRefresh = searchParams.has("refresh");
 
   try {
     if (forceRefresh) clearCache();
-    const faq = await getFaq();
+    const rows = await getFaqRows();
+
     return NextResponse.json({
       ok: true,
       refreshed: forceRefresh,
-      charCount: faq.length,
-      preview: faq.slice(0, 3000),
+      totalRows: rows.length,
       sheetUrl: process.env.SHEET_CSV_URL ?? "NOT SET",
+      rows,
     });
   } catch (err) {
     return NextResponse.json(
