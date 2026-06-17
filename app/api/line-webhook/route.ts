@@ -5,7 +5,7 @@ import { shouldHandoff, notifyAdmin } from "@/lib/handoff";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 10; // Vercel Hobby plan max = 10s
 
 const client = new messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN!,
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
           const reply = await Promise.race([
             generateReply(userMessage, faqText),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("gemini_timeout")), 8000)
+              setTimeout(() => reject(new Error("gemini_timeout")), 7000)
             ),
           ]).catch((err: Error) => {
             log.error("gemini.failed", { err: err.message, userId });
