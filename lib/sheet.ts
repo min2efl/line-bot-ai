@@ -53,7 +53,9 @@ export async function getFaq(): Promise<string> {
   const url = process.env.SHEET_CSV_URL;
   if (!url) throw new Error("SHEET_CSV_URL is not configured");
 
-  const res = await fetch(url, { cache: "no-store" });
+  // append timestamp to bypass Google Sheets CDN cache
+  const bustUrl = `${url}&t=${Date.now()}`;
+  const res = await fetch(bustUrl, { cache: "no-store" });
   if (!res.ok) throw new Error(`Sheet fetch failed: ${res.status} ${res.statusText}`);
 
   const csv = await res.text();
