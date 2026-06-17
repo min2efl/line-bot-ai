@@ -1,115 +1,101 @@
+import { NextRequest, NextResponse } from "next/server";
 import { validateSignature, messagingApi } from "@line/bot-sdk";
-import { fetchFAQ } from "@/lib/sheet";
-import { generateReply, DEFAULT_REPLY } from "@/lib/gemini";
-import { shouldHandoff, notifyAdmin } from "@/lib/handoff";
-import { log } from "@/lib/log";
-
-export const runtime = "nodejs";
-export const maxDuration = 10; // Vercel Hobby plan max = 10s
+import { getFaq } from "@/lib/sheet";
+import { askGemini, DEFAULT_MESSAGE } from "@/lib/gemini";
 
 const client = new messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN!,
 });
 
-async function replyWithRetry(
-  replyToken: string,
-  text: string,
-  attempts: number
-): Promise<void> {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      await client.replyMessage({
-        replyToken,
-        messages: [{ type: "text", text }],
-      });
-      return;
-    } catch (err) {
-      if (i === attempts - 1) throw err;
-      await new Promise((r) => setTimeout(r, 300 * (i + 1)));
-    }
-  }
+function buildPrompt(faq: string, question: string): string {
+  return `<role>
+คุณคือ พี่แอดมิน EFL ของ Education For Life ศูนย์แนะแนวศึกษาต่อต่างประเทศ
+</role>
+
+<constraints>
+ตอบโดยใช้ข้อมูลใน <faq> เท่านั้น
+
+ห้ามแต่งข้อมูลเพิ่มเอง
+ห้ามเดาราคา
+ห้ามเดาเวลาเปิดปิด
+ห้ามเดาที่ตั้ง
+ห้ามเดาข้อมูลประเทศ มหาวิทยาลัย หลักสูตร หรือเงื่อนไขต่าง ๆ
+
+ถ้าไม่พบข้อมูลใน FAQ หรือไม่มั่นใจ
+ให้ตอบข้อความนี้เท่านั้น:
+
+"ขอโทษค่ะ ยังไม่มีข้อมูลตอบกลับในตอนนี้ รบกวนฝากรายละเอียดเพิ่มเติมไว้ได้เลย พี่แอดมินจะรีบส่งเรื่องให้พี่ Counselor ตอบกลับโดยเร็วที่สุด"
+
+โทนภาษา:
+- สุภาพ
+- เป็นกันเอง
+- ใช้ emoji เล็กน้อย
+- ตอบไม่ยาวมาก แต่ได้ใจความ
+
+ความยาวคำตอบ:
+1-3 ประโยค
+</constraints>
+
+<output_format>
+ภาษาไทย
+ไม่ใช้ markdown
+</output_format>
+
+<faq>
+${faq}
+</faq>
+
+<question>
+${question}
+</question>`;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const body = await req.text();
   const signature = req.headers.get("x-line-signature") ?? "";
 
   if (!validateSignature(body, process.env.LINE_CHANNEL_SECRET!, signature)) {
-    log.warn("webhook.invalid_signature");
-    return new Response("invalid signature", { status: 401 });
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
   const { events = [] } = JSON.parse(body);
 
   await Promise.all(
-    events.map(
-      async (event: {
-        type: string;
-        replyToken: string;
-        message?: { type: string; text: string };
-        source?: { userId?: string };
-      }) => {
-        if (event.type !== "message" || event.message?.type !== "text") return;
+    events
+      .filter(
+        (event: { type: string; message?: { type: string } }) =>
+          event.type === "message" && event.message?.type === "text"
+      )
+      .map(
+        async (event: {
+          replyToken: string;
+          message: { text: string };
+        }) => {
+          const { replyToken } = event;
+          const userMessage = event.message.text;
 
-        const userMessage = event.message.text;
-        const userId = event.source?.userId ?? "unknown";
-        const startTime = Date.now();
+          let replyText = DEFAULT_MESSAGE;
 
-        try {
-          // 1. Smart Handoff — check before calling Gemini
-          if (shouldHandoff(userMessage)) {
-            await notifyAdmin(userId, userMessage);
-            await replyWithRetry(
-              event.replyToken,
-              "ขอ Counselor ติดต่อกลับนะคะ 🙏",
-              3
-            );
-            log.info("handoff.routed", {
-              userId,
-              latencyMs: Date.now() - startTime,
-            });
-            return;
+          try {
+            const faq = await getFaq();
+            const prompt = buildPrompt(faq, userMessage);
+            replyText = await askGemini(prompt);
+          } catch (error) {
+            console.error(error);
+            replyText = DEFAULT_MESSAGE;
           }
 
-          // 2. Fetch FAQ (60s cache + stale fallback)
-          const faqText = await fetchFAQ();
-
-          // 3. Call Gemini with 8s timeout
-          const reply = await Promise.race([
-            generateReply(userMessage, faqText),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("gemini_timeout")), 7000)
-            ),
-          ]).catch((err: Error) => {
-            log.error("gemini.failed", { err: err.message, userId });
-            return DEFAULT_REPLY;
-          });
-
-          // 4. Reply LINE (retry up to 3 times)
-          await replyWithRetry(event.replyToken, reply, 3);
-
-          log.info("reply.sent", {
-            userId,
-            latencyMs: Date.now() - startTime,
-            replyLength: reply.length,
-          });
-        } catch (err) {
-          log.error("webhook.error", {
-            err: (err as Error).message,
-            userId,
-          });
           try {
             await client.replyMessage({
-              replyToken: event.replyToken,
-              messages: [{ type: "text", text: DEFAULT_REPLY }],
+              replyToken,
+              messages: [{ type: "text", text: replyText }],
             });
-          } catch {
-            /* replyToken expired · ignore */
+          } catch (error) {
+            console.error(error);
           }
         }
-      }
-    )
+      )
   );
 
-  return new Response("ok", { status: 200 });
+  return NextResponse.json({ status: "ok" });
 }
