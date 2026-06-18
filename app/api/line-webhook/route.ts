@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateSignature, messagingApi } from "@line/bot-sdk";
 import { getFaq } from "@/lib/sheet";
-import { askGemini, DEFAULT_MESSAGE } from "@/lib/gemini";
+import { askAI, DEFAULT_MESSAGE } from "@/lib/ai";
 
 const client = new messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN!,
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
           try {
             const faq = await getFaq();
             const prompt = buildPrompt(faq, userMessage);
-            replyText = await askGemini(prompt);
+            replyText = await askAI(prompt);
           } catch (error) {
             console.error(error);
             replyText = DEFAULT_MESSAGE;
