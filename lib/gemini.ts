@@ -4,7 +4,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 const MODEL = "gemini-1.5-flash"; // 1.5-flash free tier = 1,500 req/day
 const DEFAULT_MESSAGE =
-  "ขอโทษค่ะ ยังไม่มีข้อมูลตอบกลับในตอนนี้ รบกวนฝากรายละเอียดเพิ่มเติมไว้ได้เลย พี่แอดมินจะรีบส่งเรื่องให้พี่ Counselor ตอบกลับโดยเร็วที่สุด";
+  "ขอโทษจริงๆ ที่ยังไม่สามารถตอบคำถามของคุณได้ในตอนนี้ค่ะ ทีมงานของเราได้รับข้อความของคุณแล้ว และจะรีบติดต่อกลับโดยเร็วที่สุดเลยค่ะ\nขอบคุณมากสำหรับความอดทนและการรอคอยนะคะ 😊";
 
 export async function askGemini(prompt: string): Promise<string> {
   const response = await ai.models.generateContent({
